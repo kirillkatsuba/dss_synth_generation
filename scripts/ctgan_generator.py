@@ -154,7 +154,7 @@ def main():
     metadata = Metadata.detect_from_dataframe(data=df, table_name="my_table")
 
     # 3. Create and configure the model
-    print(f"Creating ctgan model...")
+    print("Creating ctgan model...")
     model_kwargs = {
         "metadata": metadata,
         "verbose": args.verbose,
