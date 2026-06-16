@@ -93,3 +93,23 @@ explicitly:
 ```bash
 sbatch --export=ALL,PROJECT_DIR=$PWD,CONDA_ENV=pytorch_new,CONDA_SH=/path/to/miniconda3/etc/profile.d/conda.sh slurm/train_tabsyn.sbatch
 ```
+
+### ClearML logging
+
+Install and configure ClearML once inside the environment used by SLURM:
+
+```bash
+conda activate pytorch_new
+pip install clearml
+clearml-init
+```
+
+Then pass a ClearML project name to any job:
+
+```bash
+sbatch --export=ALL,PROJECT_DIR=$PWD,CONDA_ENV=pytorch_new,CLEARML_PROJECT=dss_synth_generation,CLEARML_TAGS="tabsyn train" slurm/train_tabsyn.sbatch
+```
+
+The wrapper initializes one ClearML task per SLURM job, captures console output
+from the upstream training process, stores launch parameters, and uploads
+generated configs/synthetic CSV artifacts when applicable.
