@@ -1,0 +1,13 @@
+Column,Metric,Score
+iops,KSComplement,0.9580140225012228
+lat,KSComplement,0.9518859720636991
+block_size,TVComplement,0.963476275884559
+n_jobs,KSComplement,0.9529729876623729
+iodepth,KSComplement,0.9433257242241425
+read_fraction,TVComplement,0.9992255013859448
+load_type,TVComplement,1.0
+io_type,TVComplement,0.9978939072775694
+raid,TVComplement,0.9218571661503343
+n_disks,KSComplement,0.9523207783031686
+device_type,TVComplement,1.0
+offset,TVComplement,1.0

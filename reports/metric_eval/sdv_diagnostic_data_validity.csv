@@ -1,0 +1,13 @@
+Column,Metric,Score
+iops,BoundaryAdherence,1.0
+lat,BoundaryAdherence,1.0
+block_size,CategoryAdherence,1.0
+n_jobs,BoundaryAdherence,1.0
+iodepth,BoundaryAdherence,1.0
+read_fraction,CategoryAdherence,1.0
+load_type,CategoryAdherence,1.0
+io_type,CategoryAdherence,1.0
+raid,CategoryAdherence,1.0
+n_disks,BoundaryAdherence,1.0
+device_type,CategoryAdherence,1.0
+offset,CategoryAdherence,1.0

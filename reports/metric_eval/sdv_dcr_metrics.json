@@ -1,0 +1,6 @@
+{
+  "dcr_overfitting_protection_score": 0.31000000000000005,
+  "sample_rows_real_test": 1000,
+  "sample_rows_real_train": 1000,
+  "sample_rows_synthetic": 1000
+}

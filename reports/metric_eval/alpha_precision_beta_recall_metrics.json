@@ -1,0 +1,7 @@
+{
+  "alpha_precision": 0.00015,
+  "beta_recall": 0.00165,
+  "level": 0.95,
+  "metric_backend": "local approximation; SDMetrics 0.28.0 has no TabSyn alpha/beta metric",
+  "support_radius": 0.08520975158442885
+}

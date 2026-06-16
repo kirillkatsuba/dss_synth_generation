@@ -1,0 +1,67 @@
+{
+  "alpha_beta": {
+    "alpha_precision": 0.00015,
+    "beta_recall": 0.00165,
+    "level": 0.95,
+    "metric_backend": "local approximation; SDMetrics 0.28.0 has no TabSyn alpha/beta metric",
+    "support_radius": 0.08520975158442885
+  },
+  "c2st": {
+    "distinguishability": 0.12123187163765481,
+    "effective_roc_auc": 0.5606159358188274,
+    "logistic_detection_score": 0.8787681283623452,
+    "metric_backend": "sdmetrics.single_table.LogisticDetection"
+  },
+  "dcr": {
+    "dcr_overfitting_protection_score": 0.31000000000000005,
+    "sample_rows_real_test": 1000,
+    "sample_rows_real_train": 1000,
+    "sample_rows_synthetic": 1000
+  },
+  "mle": [
+    {
+      "mae": 1373.8636578304197,
+      "metric_backend": "sdmetrics.single_table.LinearRegression",
+      "r2": 0.6023391759883521,
+      "rmse": 2019.788410166973,
+      "target": "iops",
+      "train_data": "real_train"
+    },
+    {
+      "mae": 109940244.14673686,
+      "metric_backend": "sdmetrics.single_table.LinearRegression",
+      "r2": 0.5471442988349465,
+      "rmse": 151103144.9411092,
+      "target": "lat",
+      "train_data": "real_train"
+    },
+    {
+      "mae": 1355.7797531942829,
+      "metric_backend": "sdmetrics.single_table.LinearRegression",
+      "r2": 0.5843944649877296,
+      "rmse": 2064.857726839645,
+      "target": "iops",
+      "train_data": "synthetic"
+    },
+    {
+      "mae": 109344818.92778979,
+      "metric_backend": "sdmetrics.single_table.LinearRegression",
+      "r2": 0.5241232859173623,
+      "rmse": 154896216.84234706,
+      "target": "lat",
+      "train_data": "synthetic"
+    }
+  ],
+  "model_drop_cols": [
+    "id"
+  ],
+  "real_test_rows": 18534,
+  "real_train_rows": 73596,
+  "sdv_diagnostic_score": 1.0,
+  "sdv_quality_score": 0.9466065139772089,
+  "synthetic_rows": 73596,
+  "target_cols": [
+    "iops",
+    "lat"
+  ]
+}

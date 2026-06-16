@@ -1,0 +1,41 @@
+{
+  "METADATA_SPEC_VERSION": "SINGLE_TABLE_V1",
+  "columns": {
+    "block_size": {
+      "sdtype": "categorical"
+    },
+    "device_type": {
+      "sdtype": "categorical"
+    },
+    "io_type": {
+      "sdtype": "categorical"
+    },
+    "iodepth": {
+      "sdtype": "numerical"
+    },
+    "iops": {
+      "sdtype": "numerical"
+    },
+    "lat": {
+      "sdtype": "numerical"
+    },
+    "load_type": {
+      "sdtype": "categorical"
+    },
+    "n_disks": {
+      "sdtype": "numerical"
+    },
+    "n_jobs": {
+      "sdtype": "numerical"
+    },
+    "offset": {
+      "sdtype": "categorical"
+    },
+    "raid": {
+      "sdtype": "categorical"
+    },
+    "read_fraction": {
+      "sdtype": "categorical"
+    }
+  }
+}

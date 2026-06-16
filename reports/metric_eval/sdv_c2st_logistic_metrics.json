@@ -1,0 +1,6 @@
+{
+  "distinguishability": 0.12123187163765481,
+  "effective_roc_auc": 0.5606159358188274,
+  "logistic_detection_score": 0.8787681283623452,
+  "metric_backend": "sdmetrics.single_table.LogisticDetection"
+}

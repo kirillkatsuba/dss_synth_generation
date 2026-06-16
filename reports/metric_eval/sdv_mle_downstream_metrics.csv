@@ -1,0 +1,5 @@
+train_data,target,r2,rmse,mae,metric_backend
+real_train,iops,0.6023391759883521,2019.788410166973,1373.8636578304197,sdmetrics.single_table.LinearRegression
+real_train,lat,0.5471442988349465,151103144.9411092,109940244.14673686,sdmetrics.single_table.LinearRegression
+synthetic,iops,0.5843944649877296,2064.857726839645,1355.7797531942829,sdmetrics.single_table.LinearRegression
+synthetic,lat,0.5241232859173623,154896216.84234706,109344818.92778979,sdmetrics.single_table.LinearRegression
