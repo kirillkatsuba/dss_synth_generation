@@ -19,7 +19,6 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-
 REPOS = {
     "tabddpm": {
         "url": "https://github.com/yandex-research/tab-ddpm.git",
@@ -107,7 +106,9 @@ def parse_args() -> argparse.Namespace:
         default="python3",
         help="Python executable inside the relevant upstream environment.",
     )
-    parser.add_argument("--gpu", type=int, default=0, help="GPU index for TabSyn/TabDiff.")
+    parser.add_argument(
+        "--gpu", type=int, default=0, help="GPU index for TabSyn/TabDiff."
+    )
     parser.add_argument(
         "--device",
         default="cuda:0",
@@ -187,7 +188,9 @@ def run_command(
         subprocess.run(cmd, cwd=cwd, env=env, check=True)
 
 
-def ensure_repos(models: list[str], dry_run: bool, skip_if_present: bool) -> None:
+def ensure_repos(
+    models: list[str], dry_run: bool, skip_if_present: bool = True
+) -> None:
     Path("external").mkdir(exist_ok=True)
     for model in models:
         repo = REPOS[model]
@@ -392,18 +395,26 @@ def prepare_data(
     configs: dict[tuple[str, str], Path | None] = {}
     for spec in specs:
         if "tabsyn" in models:
-            prepare_tabsyn_like_repo(REPOS["tabsyn"]["path"], spec, train_df, test_df, include_val_path=False)
+            prepare_tabsyn_like_repo(
+                REPOS["tabsyn"]["path"], spec, train_df, test_df, include_val_path=False
+            )
             configs[("tabsyn", spec.target)] = None
         if "tabdiff" in models:
-            prepare_tabsyn_like_repo(REPOS["tabdiff"]["path"], spec, train_df, test_df, include_val_path=True)
+            prepare_tabsyn_like_repo(
+                REPOS["tabdiff"]["path"], spec, train_df, test_df, include_val_path=True
+            )
             configs[("tabdiff", spec.target)] = None
         if "tabddpm" in models:
-            config = prepare_tabddpm_repo(REPOS["tabddpm"]["path"], spec, train_df, test_df, args)
+            config = prepare_tabddpm_repo(
+                REPOS["tabddpm"]["path"], spec, train_df, test_df, args
+            )
             configs[("tabddpm", spec.target)] = config
     return configs
 
 
-def process_prepared_data(models: list[str], specs: list[DatasetSpec], args: argparse.Namespace) -> None:
+def process_prepared_data(
+    models: list[str], specs: list[DatasetSpec], args: argparse.Namespace
+) -> None:
     for spec in specs:
         if "tabsyn" in models:
             run_command(
@@ -428,7 +439,13 @@ def train_models(
         if "tabddpm" in models:
             config_path = Path("exp") / spec.dataset_name / "dss_ddpm" / "config.toml"
             run_command(
-                [args.python, "scripts/pipeline.py", "--config", str(config_path), "--train"],
+                [
+                    args.python,
+                    "scripts/pipeline.py",
+                    "--config",
+                    str(config_path),
+                    "--train",
+                ],
                 cwd=REPOS["tabddpm"]["path"],
                 dry_run=args.dry_run,
             )
@@ -485,7 +502,9 @@ def train_models(
             )
 
 
-def convert_tabddpm_sample(repo_path: Path, spec: DatasetSpec, output_path: Path) -> None:
+def convert_tabddpm_sample(
+    repo_path: Path, spec: DatasetSpec, output_path: Path
+) -> None:
     parent_dir = repo_path / "exp" / spec.dataset_name / "dss_ddpm"
     parts: list[pd.DataFrame] = []
     if spec.num_cols:
@@ -502,22 +521,34 @@ def convert_tabddpm_sample(repo_path: Path, spec: DatasetSpec, output_path: Path
     generated.to_csv(output_path, index=False)
 
 
-def copy_latest_tabdiff_sample(repo_path: Path, spec: DatasetSpec, exp_name: str, output_path: Path) -> None:
+def copy_latest_tabdiff_sample(
+    repo_path: Path, spec: DatasetSpec, exp_name: str, output_path: Path
+) -> None:
     result_dir = repo_path / "tabdiff" / "result" / spec.dataset_name / exp_name
-    samples = sorted(result_dir.glob("**/samples.csv"), key=lambda path: path.stat().st_mtime)
+    samples = sorted(
+        result_dir.glob("**/samples.csv"), key=lambda path: path.stat().st_mtime
+    )
     if not samples:
         raise FileNotFoundError(f"No TabDiff samples found under {result_dir}")
     output_path.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(samples[-1], output_path)
 
 
-def sample_models(models: list[str], specs: list[DatasetSpec], args: argparse.Namespace) -> None:
+def sample_models(
+    models: list[str], specs: list[DatasetSpec], args: argparse.Namespace
+) -> None:
     args.synth_dir.mkdir(parents=True, exist_ok=True)
     for spec in specs:
         if "tabddpm" in models:
             config_path = Path("exp") / spec.dataset_name / "dss_ddpm" / "config.toml"
             run_command(
-                [args.python, "scripts/pipeline.py", "--config", str(config_path), "--sample"],
+                [
+                    args.python,
+                    "scripts/pipeline.py",
+                    "--config",
+                    str(config_path),
+                    "--sample",
+                ],
                 cwd=REPOS["tabddpm"]["path"],
                 dry_run=args.dry_run,
             )
@@ -584,7 +615,9 @@ def main() -> None:
 
     train_df = pd.read_csv(args.real_train)
     test_df = pd.read_csv(args.real_test)
-    specs = [infer_spec(train_df, args.dataset_prefix, target) for target in args.targets]
+    specs = [
+        infer_spec(train_df, args.dataset_prefix, target) for target in args.targets
+    ]
 
     if "clone" in phases:
         ensure_repos(models, args.dry_run, args.skip_clone_if_present)
