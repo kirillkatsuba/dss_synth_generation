@@ -13,6 +13,7 @@ import argparse
 import json
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -159,6 +160,22 @@ def parse_args() -> argparse.Namespace:
         "--dry-run",
         action="store_true",
         help="Print commands instead of executing train/sample commands.",
+    )
+    parser.add_argument(
+        "--clearml-project",
+        default=None,
+        help="If set, initialize a ClearML task under this project.",
+    )
+    parser.add_argument(
+        "--clearml-task-name",
+        default=None,
+        help="ClearML task name. Defaults to a name derived from phase/models/targets.",
+    )
+    parser.add_argument(
+        "--clearml-tags",
+        nargs="*",
+        default=[],
+        help="Optional ClearML tags.",
     )
     return parser.parse_args()
 
@@ -608,10 +625,27 @@ def sample_models(
             )
 
 
+def collect_train_artifacts(models: list[str], specs: list[DatasetSpec]) -> list[Path]:
+    artifacts: list[Path] = []
+    for spec in specs:
+        if "tabddpm" in models:
+            run_dir = REPOS["tabddpm"]["path"] / "exp" / spec.dataset_name / "dss_ddpm"
+            artifacts.extend([run_dir / "config.toml", run_dir / "loss.csv"])
+        if "tabdiff" in models:
+            run_dir = REPOS["tabdiff"]["path"] / "tabdiff" / "ckpt" / spec.dataset_name
+            artifacts.extend(run_dir.glob("**/config.pkl"))
+        if "tabsyn" in models:
+            artifacts.append(
+                REPOS["tabsyn"]["path"] / "data" / spec.dataset_name / "info.json"
+            )
+    return artifacts
+
+
 def main() -> None:
     args = parse_args()
     models = expand_models(args.models)
     phases = expand_phases(args.phase)
+    task = init_clearml(args, models, phases)
 
     train_df = pd.read_csv(args.real_train)
     test_df = pd.read_csv(args.real_test)
@@ -629,13 +663,27 @@ def main() -> None:
         for key, path in configs.items():
             if path:
                 print(f"Prepared config for {key}: {path}")
+        upload_clearml_artifacts(task, [path for path in configs.values() if path])
 
     if "train" in phases:
         train_models(models, specs, args)
+        upload_clearml_artifacts(task, collect_train_artifacts(models, specs))
 
     if "sample" in phases:
         sample_models(models, specs, args)
+        artifacts = []
+        for spec in specs:
+            for model in models:
+                artifacts.append(args.synth_dir / f"{model}_{spec.dataset_name}.csv")
+        upload_clearml_artifacts(task, artifacts)
+
+    if task is not None:
+        print("ClearML task URL:", task.get_output_log_web_page())
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as exc:
+        print(f"ERROR: {type(exc).__name__}: {exc}", file=sys.stderr)
+        raise
