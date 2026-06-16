@@ -205,9 +205,44 @@ def run_command(
         subprocess.run(cmd, cwd=cwd, env=env, check=True)
 
 
-def ensure_repos(
-    models: list[str], dry_run: bool, skip_if_present: bool = True
-) -> None:
+def init_clearml(args: argparse.Namespace, models: list[str], phases: list[str]):
+    if not args.clearml_project:
+        return None
+
+    try:
+        from clearml import Task
+    except ImportError as exc:
+        raise RuntimeError(
+            "ClearML logging requested, but package 'clearml' is not installed. "
+            "Install it in the SLURM environment: pip install clearml"
+        ) from exc
+
+    task_name = args.clearml_task_name
+    if not task_name:
+        task_name = (
+            f"dss_synth_{'-'.join(models)}_{'-'.join(phases)}_{'-'.join(args.targets)}"
+        )
+
+    task = Task.init(project_name=args.clearml_project, task_name=task_name)
+    if args.clearml_tags:
+        task.add_tags(args.clearml_tags)
+    task.connect(vars(args), name="train_external_generators_args")
+    task.get_logger().report_text(
+        "ClearML initialized. Console output from this wrapper and child "
+        "training processes is captured in the task log."
+    )
+    return task
+
+
+def upload_clearml_artifacts(task, paths: list[Path]) -> None:
+    if task is None:
+        return
+    for path in paths:
+        if path.exists():
+            task.upload_artifact(name=str(path), artifact_object=str(path))
+
+
+def ensure_repos(models: list[str], dry_run: bool, skip_if_present: bool) -> None:
     Path("external").mkdir(exist_ok=True)
     for model in models:
         repo = REPOS[model]
