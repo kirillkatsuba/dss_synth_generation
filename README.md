@@ -57,3 +57,39 @@ If a second metadata target is needed later, pass it explicitly:
 ```bash
 python3 scripts/train_external_generators.py --phase prepare train sample --models all --targets iops lat
 ```
+
+### SLURM jobs
+
+Run preparation once on CPU:
+
+```bash
+sbatch --export=ALL,PROJECT_DIR=$PWD,CONDA_ENV=pytorch_new slurm/prepare_external_generators.sbatch
+```
+
+Then submit one training job per model. Use the Python from the environment that
+matches the upstream repository dependencies:
+
+```bash
+TABDDPM_JOB=$(sbatch --parsable --export=ALL,PROJECT_DIR=$PWD,CONDA_ENV=pytorch_new slurm/train_tabddpm.sbatch)
+TABDIFF_JOB=$(sbatch --parsable --export=ALL,PROJECT_DIR=$PWD,CONDA_ENV=pytorch_new slurm/train_tabdiff.sbatch)
+TABSYN_JOB=$(sbatch --parsable --export=ALL,PROJECT_DIR=$PWD,CONDA_ENV=pytorch_new slurm/train_tabsyn.sbatch)
+```
+
+After training, sample with dependencies so SLURM starts each sampling job only
+if the corresponding training job finished successfully:
+
+```bash
+sbatch --dependency=afterok:$TABDDPM_JOB --export=ALL,PROJECT_DIR=$PWD,CONDA_ENV=pytorch_new slurm/sample_tabddpm.sbatch
+sbatch --dependency=afterok:$TABDIFF_JOB --export=ALL,PROJECT_DIR=$PWD,CONDA_ENV=pytorch_new slurm/sample_tabdiff.sbatch
+sbatch --dependency=afterok:$TABSYN_JOB --export=ALL,PROJECT_DIR=$PWD,CONDA_ENV=pytorch_new slurm/sample_tabsyn.sbatch
+```
+
+Edit `#SBATCH --partition`, `--gres`, memory, and walltime in `slurm/*.sbatch`
+to match your cluster.
+
+If `conda` is not available in non-interactive SLURM shells, pass the conda hook
+explicitly:
+
+```bash
+sbatch --export=ALL,PROJECT_DIR=$PWD,CONDA_ENV=pytorch_new,CONDA_SH=/path/to/miniconda3/etc/profile.d/conda.sh slurm/train_tabsyn.sbatch
+```
