@@ -1,0 +1,26 @@
+[  2   6 409]
+424
+{'d_in': 424, 'is_y_cond': False, 'num_classes': 0, 'rtdl_params': {'d_layers': [256, 256], 'dropout': 0.0}}
+mlp
+Step 500/10000 MLoss: nan GLoss: nan Sum: nan
+Step 1000/10000 MLoss: nan GLoss: nan Sum: nan
+Step 1500/10000 MLoss: nan GLoss: nan Sum: nan
+Step 2000/10000 MLoss: nan GLoss: nan Sum: nan
+Step 2500/10000 MLoss: nan GLoss: nan Sum: nan
+Step 3000/10000 MLoss: nan GLoss: nan Sum: nan
+Step 3500/10000 MLoss: nan GLoss: nan Sum: nan
+Step 4000/10000 MLoss: nan GLoss: nan Sum: nan
+Step 4500/10000 MLoss: nan GLoss: nan Sum: nan
+Step 5000/10000 MLoss: nan GLoss: nan Sum: nan
+Step 5500/10000 MLoss: nan GLoss: nan Sum: nan
+Step 6000/10000 MLoss: nan GLoss: nan Sum: nan
+Step 6500/10000 MLoss: nan GLoss: nan Sum: nan
+Step 7000/10000 MLoss: nan GLoss: nan Sum: nan
+Step 7500/10000 MLoss: nan GLoss: nan Sum: nan
+Step 8000/10000 MLoss: nan GLoss: nan Sum: nan
+Step 8500/10000 MLoss: nan GLoss: nan Sum: nan
+Step 9000/10000 MLoss: nan GLoss: nan Sum: nan
+Step 9500/10000 MLoss: nan GLoss: nan Sum: nan
+Step 10000/10000 MLoss: nan GLoss: nan Sum: nan
+Elapsed time: 0:04:03
+(cd external/tab-ddpm && python scripts/pipeline.py --config exp/dss_hdd_sequential_iops/dss_ddpm/config.toml --train)

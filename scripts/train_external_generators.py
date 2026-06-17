@@ -20,21 +20,23 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-
 REPOS = {
     "tabddpm": {
         "url": "https://github.com/yandex-research/tab-ddpm.git",
         "path": Path("external/tab-ddpm"),
+        "sentinel": Path("scripts/pipeline.py"),
         "sentinel": Path("scripts/pipeline.py"),
     },
     "tabdiff": {
         "url": "https://github.com/minkaixu/tabdiff.git",
         "path": Path("external/tabdiff"),
         "sentinel": Path("process_dataset.py"),
+        "sentinel": Path("process_dataset.py"),
     },
     "tabsyn": {
         "url": "https://github.com/amazon-science/tabsyn.git",
         "path": Path("external/tabsyn"),
+        "sentinel": Path("process_dataset.py"),
         "sentinel": Path("process_dataset.py"),
     },
 }
@@ -48,8 +50,11 @@ class DatasetSpec:
     target: str
     original_columns: list[str]
     model_columns: list[str]
+    original_columns: list[str]
+    model_columns: list[str]
     num_cols: list[str]
     cat_cols: list[str]
+    constant_values: dict[str, object]
     constant_values: dict[str, object]
     target_col_idx: int
     num_col_idx: list[int]
@@ -113,7 +118,9 @@ def parse_args() -> argparse.Namespace:
         default="python3",
         help="Python executable inside the relevant upstream environment.",
     )
-    parser.add_argument("--gpu", type=int, default=0, help="GPU index for TabSyn/TabDiff.")
+    parser.add_argument(
+        "--gpu", type=int, default=0, help="GPU index for TabSyn/TabDiff."
+    )
     parser.add_argument(
         "--device",
         default="cuda:0",
@@ -224,8 +231,7 @@ def init_clearml(args: argparse.Namespace, models: list[str], phases: list[str])
     task_name = args.clearml_task_name
     if not task_name:
         task_name = (
-            f"dss_synth_{'-'.join(models)}_{'-'.join(phases)}_"
-            f"{'-'.join(args.targets)}"
+            f"dss_synth_{'-'.join(models)}_{'-'.join(phases)}_{'-'.join(args.targets)}"
         )
 
     task = Task.init(project_name=args.clearml_project, task_name=task_name)
@@ -254,8 +260,15 @@ def ensure_repos(models: list[str], dry_run: bool, skip_if_present: bool) -> Non
         repo_path = repo["path"]
         sentinel = repo_path / repo["sentinel"]
         if sentinel.exists() and skip_if_present:
+        sentinel = repo_path / repo["sentinel"]
+        if sentinel.exists() and skip_if_present:
             print(f"{model}: using existing {repo_path}")
             continue
+        if repo_path.exists() and not sentinel.exists():
+            raise RuntimeError(
+                f"{repo_path} exists, but {sentinel} is missing. "
+                "Remove the incomplete directory or clone the upstream repository there."
+            )
         if repo_path.exists() and not sentinel.exists():
             raise RuntimeError(
                 f"{repo_path} exists, but {sentinel} is missing. "
@@ -282,8 +295,23 @@ def infer_spec(df: pd.DataFrame, dataset_prefix: str, target: str) -> DatasetSpe
         if col != target and df[col].nunique(dropna=False) <= 1
     }
     model_columns = [col for col in original_columns if col not in constant_values]
+    def scalar(value):
+        if pd.isna(value):
+            return None
+        if isinstance(value, np.generic):
+            return value.item()
+        return value
+
+    original_columns = list(df.columns)
+    constant_values = {
+        col: scalar(df[col].dropna().iloc[0]) if df[col].dropna().size else None
+        for col in original_columns
+        if col != target and df[col].nunique(dropna=False) <= 1
+    }
+    model_columns = [col for col in original_columns if col not in constant_values]
     numeric_cols = [
         col
+        for col in model_columns
         for col in model_columns
         if col != target and pd.api.types.is_numeric_dtype(df[col])
     ]
@@ -293,8 +321,14 @@ def infer_spec(df: pd.DataFrame, dataset_prefix: str, target: str) -> DatasetSpe
         target=target,
         original_columns=original_columns,
         model_columns=model_columns,
+        original_columns=original_columns,
+        model_columns=model_columns,
         num_cols=numeric_cols,
         cat_cols=cat_cols,
+        constant_values=constant_values,
+        target_col_idx=model_columns.index(target),
+        num_col_idx=[model_columns.index(col) for col in numeric_cols],
+        cat_col_idx=[model_columns.index(col) for col in cat_cols],
         constant_values=constant_values,
         target_col_idx=model_columns.index(target),
         num_col_idx=[model_columns.index(col) for col in numeric_cols],
@@ -323,11 +357,14 @@ def prepare_tabsyn_like_repo(
     test_csv = data_dir / f"{spec.dataset_name}_test.csv"
     train_df[spec.model_columns].to_csv(train_csv, index=False)
     test_df[spec.model_columns].to_csv(test_csv, index=False)
+    train_df[spec.model_columns].to_csv(train_csv, index=False)
+    test_df[spec.model_columns].to_csv(test_csv, index=False)
 
     info = {
         "name": spec.dataset_name,
         "task_type": "regression",
         "header": "infer",
+        "column_names": spec.model_columns,
         "column_names": spec.model_columns,
         "num_col_idx": spec.num_col_idx,
         "cat_col_idx": spec.cat_col_idx,
@@ -421,6 +458,9 @@ def prepare_tabddpm_repo(
         "columns": spec.original_columns,
         "model_columns": spec.model_columns,
         "constant_values": spec.constant_values,
+        "columns": spec.original_columns,
+        "model_columns": spec.model_columns,
+        "constant_values": spec.constant_values,
         "num_columns": spec.num_cols,
         "cat_columns": spec.cat_cols,
         "target": spec.target,
@@ -497,18 +537,26 @@ def prepare_data(
     configs: dict[tuple[str, str], Path | None] = {}
     for spec in specs:
         if "tabsyn" in models:
-            prepare_tabsyn_like_repo(REPOS["tabsyn"]["path"], spec, train_df, test_df, include_val_path=False)
+            prepare_tabsyn_like_repo(
+                REPOS["tabsyn"]["path"], spec, train_df, test_df, include_val_path=False
+            )
             configs[("tabsyn", spec.target)] = None
         if "tabdiff" in models:
-            prepare_tabsyn_like_repo(REPOS["tabdiff"]["path"], spec, train_df, test_df, include_val_path=True)
+            prepare_tabsyn_like_repo(
+                REPOS["tabdiff"]["path"], spec, train_df, test_df, include_val_path=True
+            )
             configs[("tabdiff", spec.target)] = None
         if "tabddpm" in models:
-            config = prepare_tabddpm_repo(REPOS["tabddpm"]["path"], spec, train_df, test_df, args)
+            config = prepare_tabddpm_repo(
+                REPOS["tabddpm"]["path"], spec, train_df, test_df, args
+            )
             configs[("tabddpm", spec.target)] = config
     return configs
 
 
-def process_prepared_data(models: list[str], specs: list[DatasetSpec], args: argparse.Namespace) -> None:
+def process_prepared_data(
+    models: list[str], specs: list[DatasetSpec], args: argparse.Namespace
+) -> None:
     for spec in specs:
         if "tabsyn" in models:
             run_command(
@@ -533,7 +581,13 @@ def train_models(
         if "tabddpm" in models:
             config_path = Path("exp") / spec.dataset_name / "dss_ddpm" / "config.toml"
             run_command(
-                [args.python, "scripts/pipeline.py", "--config", str(config_path), "--train"],
+                [
+                    args.python,
+                    "scripts/pipeline.py",
+                    "--config",
+                    str(config_path),
+                    "--train",
+                ],
                 cwd=REPOS["tabddpm"]["path"],
                 dry_run=args.dry_run,
             )
@@ -590,7 +644,9 @@ def train_models(
             )
 
 
-def convert_tabddpm_sample(repo_path: Path, spec: DatasetSpec, output_path: Path) -> None:
+def convert_tabddpm_sample(
+    repo_path: Path, spec: DatasetSpec, output_path: Path
+) -> None:
     parent_dir = repo_path / "exp" / spec.dataset_name / "dss_ddpm"
     parts: list[pd.DataFrame] = []
     if spec.num_cols:
@@ -618,21 +674,34 @@ def add_constants_and_save(input_path: Path, output_path: Path, spec: DatasetSpe
     generated.to_csv(output_path, index=False)
 
 
-def copy_latest_tabdiff_sample(repo_path: Path, spec: DatasetSpec, exp_name: str, output_path: Path) -> None:
+def copy_latest_tabdiff_sample(
+    repo_path: Path, spec: DatasetSpec, exp_name: str, output_path: Path
+) -> None:
     result_dir = repo_path / "tabdiff" / "result" / spec.dataset_name / exp_name
-    samples = sorted(result_dir.glob("**/samples.csv"), key=lambda path: path.stat().st_mtime)
+    samples = sorted(
+        result_dir.glob("**/samples.csv"), key=lambda path: path.stat().st_mtime
+    )
     if not samples:
         raise FileNotFoundError(f"No TabDiff samples found under {result_dir}")
     add_constants_and_save(samples[-1], output_path, spec)
+    add_constants_and_save(samples[-1], output_path, spec)
 
 
-def sample_models(models: list[str], specs: list[DatasetSpec], args: argparse.Namespace) -> None:
+def sample_models(
+    models: list[str], specs: list[DatasetSpec], args: argparse.Namespace
+) -> None:
     args.synth_dir.mkdir(parents=True, exist_ok=True)
     for spec in specs:
         if "tabddpm" in models:
             config_path = Path("exp") / spec.dataset_name / "dss_ddpm" / "config.toml"
             run_command(
-                [args.python, "scripts/pipeline.py", "--config", str(config_path), "--sample"],
+                [
+                    args.python,
+                    "scripts/pipeline.py",
+                    "--config",
+                    str(config_path),
+                    "--sample",
+                ],
                 cwd=REPOS["tabddpm"]["path"],
                 dry_run=args.dry_run,
             )
@@ -671,6 +740,7 @@ def sample_models(models: list[str], specs: list[DatasetSpec], args: argparse.Na
         if "tabsyn" in models:
             output_path = args.synth_dir / f"tabsyn_{spec.dataset_name}.csv"
             raw_output_path = args.synth_dir / f".tabsyn_{spec.dataset_name}.raw.csv"
+            raw_output_path = args.synth_dir / f".tabsyn_{spec.dataset_name}.raw.csv"
             run_command(
                 [
                     args.python,
@@ -687,10 +757,13 @@ def sample_models(models: list[str], specs: list[DatasetSpec], args: argparse.Na
                     str(args.tabsyn_steps),
                     "--save_path",
                     str(Path.cwd() / raw_output_path),
+                    str(Path.cwd() / raw_output_path),
                 ],
                 cwd=REPOS["tabsyn"]["path"],
                 dry_run=args.dry_run,
             )
+            if not args.dry_run:
+                add_constants_and_save(raw_output_path, output_path, spec)
             if not args.dry_run:
                 add_constants_and_save(raw_output_path, output_path, spec)
 
@@ -705,7 +778,9 @@ def collect_train_artifacts(models: list[str], specs: list[DatasetSpec]) -> list
             run_dir = REPOS["tabdiff"]["path"] / "tabdiff" / "ckpt" / spec.dataset_name
             artifacts.extend(run_dir.glob("**/config.pkl"))
         if "tabsyn" in models:
-            artifacts.append(REPOS["tabsyn"]["path"] / "data" / spec.dataset_name / "info.json")
+            artifacts.append(
+                REPOS["tabsyn"]["path"] / "data" / spec.dataset_name / "info.json"
+            )
     return artifacts
 
 
@@ -717,7 +792,9 @@ def main() -> None:
 
     train_df = pd.read_csv(args.real_train)
     test_df = pd.read_csv(args.real_test)
-    specs = [infer_spec(train_df, args.dataset_prefix, target) for target in args.targets]
+    specs = [
+        infer_spec(train_df, args.dataset_prefix, target) for target in args.targets
+    ]
 
     if "clone" in phases:
         ensure_repos(models, args.dry_run, args.skip_clone_if_present)
