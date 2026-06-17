@@ -16,6 +16,8 @@ CONDA_SH="${CONDA_SH:-}"
 TARGETS="${TARGETS:-iops}"
 DEVICE="${DEVICE:-cuda:0}"
 TABDDPM_STEPS="${TABDDPM_STEPS:-10000}"
+TABDDPM_LR="${TABDDPM_LR:-0.0001}"
+MODEL_DROP_COLS="${MODEL_DROP_COLS:-id}"
 
 
 cd "${PROJECT_DIR}"
@@ -38,4 +40,6 @@ fi
   --targets ${TARGETS} \
   --python "${PYTHON_BIN}" \
   --device "${DEVICE}" \
-  --tabddpm-steps "${TABDDPM_STEPS}"
+  --tabddpm-steps "${TABDDPM_STEPS}" \
+  --tabddpm-lr "${TABDDPM_LR}" \
+  --model-drop-cols ${MODEL_DROP_COLS}

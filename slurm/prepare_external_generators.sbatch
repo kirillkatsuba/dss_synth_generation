@@ -14,6 +14,7 @@ PYTHON_BIN="${PYTHON_BIN:-python3}"
 CONDA_ENV="${CONDA_ENV:-pytorch_new}"
 MODELS="${MODELS:-all}"
 TARGETS="${TARGETS:-iops}"
+MODEL_DROP_COLS="${MODEL_DROP_COLS:-id}"
 
 cd "${PROJECT_DIR}"
 mkdir -p slurm/logs
@@ -25,4 +26,5 @@ conda activate "${CONDA_ENV}"
 "${PYTHON_BIN}" scripts/train_external_generators.py \
   --phase clone prepare \
   --models ${MODELS} \
-  --targets ${TARGETS}
+  --targets ${TARGETS} \
+  --model-drop-cols ${MODEL_DROP_COLS}

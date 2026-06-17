@@ -50,6 +50,7 @@ class DatasetSpec:
     num_cols: list[str]
     cat_cols: list[str]
     constant_values: dict[str, object]
+    sampled_columns: list[str]
     target_col_idx: int
     num_col_idx: list[int]
     cat_col_idx: list[int]
@@ -137,6 +138,21 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=4096,
         help="TabDDPM train batch size.",
+    )
+    parser.add_argument(
+        "--tabddpm-lr",
+        type=float,
+        default=1e-4,
+        help="TabDDPM learning rate.",
+    )
+    parser.add_argument(
+        "--model-drop-cols",
+        nargs="*",
+        default=["id"],
+        help=(
+            "Columns excluded from external model training and restored in final "
+            "synthetic CSV by sampling from the real train distribution."
+        ),
     )
     parser.add_argument(
         "--tabdiff-exp-name",
@@ -264,7 +280,12 @@ def ensure_repos(models: list[str], dry_run: bool, skip_if_present: bool) -> Non
         run_command(["git", "clone", repo["url"], str(repo_path)], dry_run=dry_run)
 
 
-def infer_spec(df: pd.DataFrame, dataset_prefix: str, target: str) -> DatasetSpec:
+def infer_spec(
+    df: pd.DataFrame,
+    dataset_prefix: str,
+    target: str,
+    model_drop_cols: list[str] | None = None,
+) -> DatasetSpec:
     if target not in df.columns:
         raise ValueError(f"Target column '{target}' is absent from {list(df.columns)}")
 
@@ -276,12 +297,21 @@ def infer_spec(df: pd.DataFrame, dataset_prefix: str, target: str) -> DatasetSpe
         return value
 
     original_columns = list(df.columns)
+    model_drop_cols = list(model_drop_cols or [])
+    if target in model_drop_cols:
+        raise ValueError(f"Target column '{target}' cannot be in --model-drop-cols.")
     constant_values = {
         col: scalar(df[col].dropna().iloc[0]) if df[col].dropna().size else None
         for col in original_columns
         if col != target and df[col].nunique(dropna=False) <= 1
     }
-    model_columns = [col for col in original_columns if col not in constant_values]
+    sampled_columns = [
+        col
+        for col in model_drop_cols
+        if col in original_columns and col != target and col not in constant_values
+    ]
+    excluded_columns = set(constant_values) | set(sampled_columns)
+    model_columns = [col for col in original_columns if col not in excluded_columns]
     numeric_cols = [
         col
         for col in model_columns
@@ -298,6 +328,7 @@ def infer_spec(df: pd.DataFrame, dataset_prefix: str, target: str) -> DatasetSpe
         num_cols=numeric_cols,
         cat_cols=cat_cols,
         constant_values=constant_values,
+        sampled_columns=sampled_columns,
         target_col_idx=model_columns.index(target),
         num_col_idx=[model_columns.index(col) for col in numeric_cols],
         cat_col_idx=[model_columns.index(col) for col in cat_cols],
@@ -425,6 +456,7 @@ def prepare_tabddpm_repo(
         "columns": spec.original_columns,
         "model_columns": spec.model_columns,
         "constant_values": spec.constant_values,
+        "sampled_columns": spec.sampled_columns,
         "num_columns": spec.num_cols,
         "cat_columns": spec.cat_cols,
         "target": spec.target,
@@ -456,7 +488,7 @@ scheduler = "cosine"
 
 [train.main]
 steps = {args.tabddpm_steps}
-lr = 0.001
+lr = {args.tabddpm_lr}
 weight_decay = 1e-5
 batch_size = {args.tabddpm_batch_size}
 
@@ -609,7 +641,11 @@ def train_models(
 
 
 def convert_tabddpm_sample(
-    repo_path: Path, spec: DatasetSpec, output_path: Path
+    repo_path: Path,
+    spec: DatasetSpec,
+    output_path: Path,
+    train_df: pd.DataFrame,
+    random_state: int = 42,
 ) -> None:
     parent_dir = repo_path / "exp" / spec.dataset_name / "dss_ddpm"
     parts: list[pd.DataFrame] = []
@@ -624,24 +660,49 @@ def convert_tabddpm_sample(
     generated = pd.concat(parts, axis=1)
     for col, value in spec.constant_values.items():
         generated[col] = value
+    add_sampled_columns(generated, train_df, spec, random_state=random_state)
     generated = generated.reindex(columns=spec.original_columns)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     generated.to_csv(output_path, index=False)
 
 
+def add_sampled_columns(
+    generated: pd.DataFrame,
+    train_df: pd.DataFrame,
+    spec: DatasetSpec,
+    random_state: int = 42,
+) -> None:
+    rng = np.random.default_rng(random_state)
+    for col in spec.sampled_columns:
+        values = train_df[col].dropna().to_numpy()
+        if len(values) == 0:
+            generated[col] = None
+        else:
+            generated[col] = rng.choice(values, size=len(generated), replace=True)
+
+
 def add_constants_and_save(
-    input_path: Path, output_path: Path, spec: DatasetSpec
+    input_path: Path,
+    output_path: Path,
+    spec: DatasetSpec,
+    train_df: pd.DataFrame,
+    random_state: int = 42,
 ) -> None:
     generated = pd.read_csv(input_path)
     for col, value in spec.constant_values.items():
         generated[col] = value
+    add_sampled_columns(generated, train_df, spec, random_state=random_state)
     generated = generated.reindex(columns=spec.original_columns)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     generated.to_csv(output_path, index=False)
 
 
 def copy_latest_tabdiff_sample(
-    repo_path: Path, spec: DatasetSpec, exp_name: str, output_path: Path
+    repo_path: Path,
+    spec: DatasetSpec,
+    exp_name: str,
+    output_path: Path,
+    train_df: pd.DataFrame,
 ) -> None:
     result_dir = repo_path / "tabdiff" / "result" / spec.dataset_name / exp_name
     samples = sorted(
@@ -649,11 +710,14 @@ def copy_latest_tabdiff_sample(
     )
     if not samples:
         raise FileNotFoundError(f"No TabDiff samples found under {result_dir}")
-    add_constants_and_save(samples[-1], output_path, spec)
+    add_constants_and_save(samples[-1], output_path, spec, train_df)
 
 
 def sample_models(
-    models: list[str], specs: list[DatasetSpec], args: argparse.Namespace
+    models: list[str],
+    specs: list[DatasetSpec],
+    train_df: pd.DataFrame,
+    args: argparse.Namespace,
 ) -> None:
     args.synth_dir.mkdir(parents=True, exist_ok=True)
     for spec in specs:
@@ -675,6 +739,7 @@ def sample_models(
                     REPOS["tabddpm"]["path"],
                     spec,
                     args.synth_dir / f"tabddpm_{spec.dataset_name}.csv",
+                    train_df,
                 )
 
         if "tabdiff" in models:
@@ -700,6 +765,7 @@ def sample_models(
                     spec,
                     args.tabdiff_exp_name,
                     args.synth_dir / f"tabdiff_{spec.dataset_name}.csv",
+                    train_df,
                 )
 
         if "tabsyn" in models:
@@ -726,7 +792,7 @@ def sample_models(
                 dry_run=args.dry_run,
             )
             if not args.dry_run:
-                add_constants_and_save(raw_output_path, output_path, spec)
+                add_constants_and_save(raw_output_path, output_path, spec, train_df)
 
 
 def collect_train_artifacts(models: list[str], specs: list[DatasetSpec]) -> list[Path]:
@@ -754,7 +820,8 @@ def main() -> None:
     train_df = pd.read_csv(args.real_train)
     test_df = pd.read_csv(args.real_test)
     specs = [
-        infer_spec(train_df, args.dataset_prefix, target) for target in args.targets
+        infer_spec(train_df, args.dataset_prefix, target, args.model_drop_cols)
+        for target in args.targets
     ]
 
     if "clone" in phases:
@@ -774,7 +841,7 @@ def main() -> None:
         upload_clearml_artifacts(task, collect_train_artifacts(models, specs))
 
     if "sample" in phases:
-        sample_models(models, specs, args)
+        sample_models(models, specs, train_df, args)
         artifacts = []
         for spec in specs:
             for model in models:
