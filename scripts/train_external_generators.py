@@ -24,14 +24,17 @@ REPOS = {
     "tabddpm": {
         "url": "https://github.com/yandex-research/tab-ddpm.git",
         "path": Path("external/tab-ddpm"),
+        "sentinel": Path("scripts/pipeline.py"),
     },
     "tabdiff": {
         "url": "https://github.com/minkaixu/tabdiff.git",
         "path": Path("external/tabdiff"),
+        "sentinel": Path("process_dataset.py"),
     },
     "tabsyn": {
         "url": "https://github.com/amazon-science/tabsyn.git",
         "path": Path("external/tabsyn"),
+        "sentinel": Path("process_dataset.py"),
     },
 }
 
@@ -42,9 +45,11 @@ DEFAULT_NUMERIC_TARGETS = ("iops",)
 class DatasetSpec:
     dataset_name: str
     target: str
-    columns: list[str]
+    original_columns: list[str]
+    model_columns: list[str]
     num_cols: list[str]
     cat_cols: list[str]
+    constant_values: dict[str, object]
     target_col_idx: int
     num_col_idx: list[int]
     cat_col_idx: list[int]
@@ -247,9 +252,15 @@ def ensure_repos(models: list[str], dry_run: bool, skip_if_present: bool) -> Non
     for model in models:
         repo = REPOS[model]
         repo_path = repo["path"]
-        if repo_path.exists() and skip_if_present:
+        sentinel = repo_path / repo["sentinel"]
+        if sentinel.exists() and skip_if_present:
             print(f"{model}: using existing {repo_path}")
             continue
+        if repo_path.exists() and not sentinel.exists():
+            raise RuntimeError(
+                f"{repo_path} exists, but {sentinel} is missing. "
+                "Remove the incomplete directory or clone the upstream repository there."
+            )
         run_command(["git", "clone", repo["url"], str(repo_path)], dry_run=dry_run)
 
 
@@ -257,22 +268,39 @@ def infer_spec(df: pd.DataFrame, dataset_prefix: str, target: str) -> DatasetSpe
     if target not in df.columns:
         raise ValueError(f"Target column '{target}' is absent from {list(df.columns)}")
 
-    columns = list(df.columns)
+    def scalar(value):
+        if pd.isna(value):
+            return None
+        if isinstance(value, np.generic):
+            return value.item()
+        return value
+
+    original_columns = list(df.columns)
+    constant_values = {
+        col: scalar(df[col].dropna().iloc[0]) if df[col].dropna().size else None
+        for col in original_columns
+        if col != target and df[col].nunique(dropna=False) <= 1
+    }
+    model_columns = [col for col in original_columns if col not in constant_values]
     numeric_cols = [
         col
-        for col in columns
+        for col in model_columns
         if col != target and pd.api.types.is_numeric_dtype(df[col])
     ]
-    cat_cols = [col for col in columns if col != target and col not in numeric_cols]
+    cat_cols = [
+        col for col in model_columns if col != target and col not in numeric_cols
+    ]
     return DatasetSpec(
         dataset_name=f"{dataset_prefix}_{target}",
         target=target,
-        columns=columns,
+        original_columns=original_columns,
+        model_columns=model_columns,
         num_cols=numeric_cols,
         cat_cols=cat_cols,
-        target_col_idx=columns.index(target),
-        num_col_idx=[columns.index(col) for col in numeric_cols],
-        cat_col_idx=[columns.index(col) for col in cat_cols],
+        constant_values=constant_values,
+        target_col_idx=model_columns.index(target),
+        num_col_idx=[model_columns.index(col) for col in numeric_cols],
+        cat_col_idx=[model_columns.index(col) for col in cat_cols],
     )
 
 
@@ -295,14 +323,14 @@ def prepare_tabsyn_like_repo(
 
     train_csv = data_dir / f"{spec.dataset_name}.csv"
     test_csv = data_dir / f"{spec.dataset_name}_test.csv"
-    train_df.to_csv(train_csv, index=False)
-    test_df.to_csv(test_csv, index=False)
+    train_df[spec.model_columns].to_csv(train_csv, index=False)
+    test_df[spec.model_columns].to_csv(test_csv, index=False)
 
     info = {
         "name": spec.dataset_name,
         "task_type": "regression",
         "header": "infer",
-        "column_names": None,
+        "column_names": spec.model_columns,
         "num_col_idx": spec.num_col_idx,
         "cat_col_idx": spec.cat_col_idx,
         "target_col_idx": [spec.target_col_idx],
@@ -314,6 +342,30 @@ def prepare_tabsyn_like_repo(
         info["val_path"] = None
 
     write_json(info_dir / f"{spec.dataset_name}.json", info)
+    validate_tabsyn_like_info(train_csv, info)
+
+
+def validate_tabsyn_like_info(csv_path: Path, info: dict) -> None:
+    df = pd.read_csv(csv_path, header=info["header"])
+    columns = info["column_names"] or list(df.columns)
+    num_cols = [columns[idx] for idx in info["num_col_idx"]]
+    cat_cols = [columns[idx] for idx in info["cat_col_idx"]]
+    target_cols = [columns[idx] for idx in info["target_col_idx"]]
+
+    for col in num_cols + target_cols:
+        converted = pd.to_numeric(df[col], errors="coerce")
+        if converted.isna().any():
+            bad_values = df.loc[converted.isna(), col].dropna().astype(str).unique()[:5]
+            raise ValueError(
+                f"Column '{col}' is declared numerical for {csv_path}, "
+                f"but contains non-numeric values: {bad_values.tolist()}"
+            )
+
+    overlap = set(num_cols) & set(cat_cols)
+    if overlap:
+        raise ValueError(
+            f"Columns declared both numerical and categorical: {sorted(overlap)}"
+        )
 
 
 def prepare_tabddpm_repo(
@@ -370,7 +422,9 @@ def prepare_tabddpm_repo(
         "test_size": len(test_part),
         "n_num_features": len(spec.num_cols),
         "n_cat_features": len(spec.cat_cols),
-        "columns": spec.columns,
+        "columns": spec.original_columns,
+        "model_columns": spec.model_columns,
+        "constant_values": spec.constant_values,
         "num_columns": spec.num_cols,
         "cat_columns": spec.cat_cols,
         "target": spec.target,
@@ -568,7 +622,20 @@ def convert_tabddpm_sample(
     y = np.load(parent_dir / "y_train.npy", allow_pickle=True)
     parts.append(pd.DataFrame({spec.target: y.reshape(-1)}))
     generated = pd.concat(parts, axis=1)
-    generated = generated.reindex(columns=spec.columns)
+    for col, value in spec.constant_values.items():
+        generated[col] = value
+    generated = generated.reindex(columns=spec.original_columns)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    generated.to_csv(output_path, index=False)
+
+
+def add_constants_and_save(
+    input_path: Path, output_path: Path, spec: DatasetSpec
+) -> None:
+    generated = pd.read_csv(input_path)
+    for col, value in spec.constant_values.items():
+        generated[col] = value
+    generated = generated.reindex(columns=spec.original_columns)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     generated.to_csv(output_path, index=False)
 
@@ -582,8 +649,7 @@ def copy_latest_tabdiff_sample(
     )
     if not samples:
         raise FileNotFoundError(f"No TabDiff samples found under {result_dir}")
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(samples[-1], output_path)
+    add_constants_and_save(samples[-1], output_path, spec)
 
 
 def sample_models(
@@ -638,6 +704,7 @@ def sample_models(
 
         if "tabsyn" in models:
             output_path = args.synth_dir / f"tabsyn_{spec.dataset_name}.csv"
+            raw_output_path = args.synth_dir / f".tabsyn_{spec.dataset_name}.raw.csv"
             run_command(
                 [
                     args.python,
@@ -653,11 +720,13 @@ def sample_models(
                     "--steps",
                     str(args.tabsyn_steps),
                     "--save_path",
-                    str(Path.cwd() / output_path),
+                    str(Path.cwd() / raw_output_path),
                 ],
                 cwd=REPOS["tabsyn"]["path"],
                 dry_run=args.dry_run,
             )
+            if not args.dry_run:
+                add_constants_and_save(raw_output_path, output_path, spec)
 
 
 def collect_train_artifacts(models: list[str], specs: list[DatasetSpec]) -> list[Path]:
