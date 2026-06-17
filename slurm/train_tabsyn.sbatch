@@ -10,7 +10,7 @@
 
 set -euo pipefail
 
-PROJECT_DIR="${PROJECT_DIR:-/path/to/dss_synth_generation}"
+PROJECT_DIR="${PROJECT_DIR:-/home/kkatsuba/work_flow/dss_synth_generation}"
 PYTHON_BIN="${PYTHON_BIN:-}"
 CONDA_ENV="${CONDA_ENV:-}"
 CONDA_SH="${CONDA_SH:-}"
