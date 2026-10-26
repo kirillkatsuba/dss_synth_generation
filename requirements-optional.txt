@@ -1,0 +1,6 @@
+# Legacy SDV/CTGAN evaluation and XGBoost, not upstream model environments.
+-r requirements.txt
+sdv==1.37.0
+xgboost==3.0.2
+plotly>=5,<7
+# ClearML is opt-in: install clearml separately when enabling tracking.

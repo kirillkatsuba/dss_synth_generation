@@ -6,14 +6,19 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --time=04:00:00
 #SBATCH --nodes=1
+#SBATCH --partition=rocky
 
-set -euo pipefail
+set -eo pipefail
 
 PROJECT_DIR="${PROJECT_DIR:-/home/kkatsuba/work_flow/dss_synth_generation}"
 PYTHON_BIN="${PYTHON_BIN:-}"
 CONDA_ENV="${CONDA_ENV:-}"
 CONDA_SH="${CONDA_SH:-}"
 TARGETS="${TARGETS:-iops}"
+REAL_TRAIN="${REAL_TRAIN:-dataset/pools/train_hdd_sequential.csv}"
+REAL_TEST="${REAL_TEST:-dataset/pools/test_hdd_sequential.csv}"
+DATASET_PREFIX="${DATASET_PREFIX:-dss_${DATASET:-hdd_sequential}${DATASET_CONFIG:+_clean}}"
+SYNTH_DIR="${SYNTH_DIR:-synth_data}"
 DEVICE="${DEVICE:-cuda:0}"
 CLEARML_PROJECT="${CLEARML_PROJECT:-}"
 CLEARML_TASK_NAME="${CLEARML_TASK_NAME:-}"
@@ -21,6 +26,8 @@ CLEARML_TAGS="${CLEARML_TAGS:-}"
 
 cd "${PROJECT_DIR}"
 mkdir -p slurm/logs
+export LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
+export PYTHONUNBUFFERED=1
 
 if [[ -n "${CONDA_ENV}" ]]; then
   if [[ -z "${CONDA_SH}" ]]; then
@@ -32,6 +39,7 @@ if [[ -n "${CONDA_ENV}" ]]; then
 else
   PYTHON_BIN="${PYTHON_BIN:-python3}"
 fi
+set -u
 
 CLEARML_ARGS=()
 if [[ -n "${CLEARML_PROJECT}" ]]; then
@@ -40,10 +48,20 @@ if [[ -n "${CLEARML_PROJECT}" ]]; then
   [[ -n "${CLEARML_TAGS}" ]] && CLEARML_ARGS+=(--clearml-tags ${CLEARML_TAGS})
 fi
 
+DATASET_ARGS=()
+if [[ -n "${DATASET_CONFIG:-}" ]]; then
+  DATASET_ARGS=(--dataset-config "${DATASET_CONFIG}" --dataset "${DATASET:?Set DATASET with DATASET_CONFIG}")
+fi
+
 "${PYTHON_BIN}" scripts/train_external_generators.py \
+  ${DATASET_ARGS[@]+"${DATASET_ARGS[@]}"} \
   --phase sample \
   --models tabddpm \
   --targets ${TARGETS} \
+  --real-train "${REAL_TRAIN}" \
+  --real-test "${REAL_TEST}" \
+  --dataset-prefix "${DATASET_PREFIX}" \
+  --synth-dir "${SYNTH_DIR}" \
   --python "${PYTHON_BIN}" \
   --device "${DEVICE}" \
-  "${CLEARML_ARGS[@]}"
+  ${CLEARML_ARGS[@]+"${CLEARML_ARGS[@]}"}

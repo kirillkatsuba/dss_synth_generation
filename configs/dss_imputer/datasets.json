@@ -1,0 +1,18 @@
+{
+  "hdd_sequential": {
+    "train_csv": "dataset/pools/train_hdd_sequential.csv",
+    "test_csv": "dataset/pools/test_hdd_sequential.csv"
+  },
+  "ssd_sequential": {
+    "train_csv": "dataset/pools/train_ssd_sequential.csv",
+    "test_csv": "dataset/pools/test_ssd_sequential.csv"
+  },
+  "ssd_random": {
+    "train_csv": "dataset/pools/train_ssd_random.csv",
+    "test_csv": "dataset/pools/test_ssd_random.csv"
+  },
+  "cache": {
+    "train_csv": "dataset/cache/train_cache.csv",
+    "test_csv": "dataset/cache/test_cache.csv"
+  }
+}

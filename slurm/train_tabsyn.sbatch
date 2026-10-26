@@ -2,10 +2,10 @@
 #SBATCH --job-name=dss_tabsyn_train
 #SBATCH --output=slurm/logs/%x-%j.out
 #SBATCH --error=slurm/logs/%x-%j.err
-#SBATCH --partition=gpu
-#SBATCH --gres=gpu:1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
+#SBATCH --nodes=1
+#SBATCH --partition=rocky
+#SBATCH --gpus=1
+#SBATCH --cpus-per-task=4
 #SBATCH --time=24:00:00
 
 set -euo pipefail
@@ -15,6 +15,10 @@ PYTHON_BIN="${PYTHON_BIN:-}"
 CONDA_ENV="${CONDA_ENV:-}"
 CONDA_SH="${CONDA_SH:-}"
 TARGETS="${TARGETS:-iops}"
+REAL_TRAIN="${REAL_TRAIN:-dataset/pools/train_hdd_sequential.csv}"
+REAL_TEST="${REAL_TEST:-dataset/pools/test_hdd_sequential.csv}"
+DATASET_PREFIX="${DATASET_PREFIX:-dss_${DATASET:-hdd_sequential}${DATASET_CONFIG:+_clean}}"
+SYNTH_DIR="${SYNTH_DIR:-synth_data}"
 GPU="${GPU:-0}"
 CLEARML_PROJECT="${CLEARML_PROJECT:-}"
 CLEARML_TASK_NAME="${CLEARML_TASK_NAME:-}"
@@ -41,10 +45,20 @@ if [[ -n "${CLEARML_PROJECT}" ]]; then
   [[ -n "${CLEARML_TAGS}" ]] && CLEARML_ARGS+=(--clearml-tags ${CLEARML_TAGS})
 fi
 
+DATASET_ARGS=()
+if [[ -n "${DATASET_CONFIG:-}" ]]; then
+  DATASET_ARGS=(--dataset-config "${DATASET_CONFIG}" --dataset "${DATASET:?Set DATASET with DATASET_CONFIG}")
+fi
+
 "${PYTHON_BIN}" scripts/train_external_generators.py \
+  ${DATASET_ARGS[@]+"${DATASET_ARGS[@]}"} \
   --phase train \
   --models tabsyn \
   --targets ${TARGETS} \
+  --real-train "${REAL_TRAIN}" \
+  --real-test "${REAL_TEST}" \
+  --dataset-prefix "${DATASET_PREFIX}" \
+  --synth-dir "${SYNTH_DIR}" \
   --python "${PYTHON_BIN}" \
   --gpu "${GPU}" \
-  "${CLEARML_ARGS[@]}"
+  ${CLEARML_ARGS[@]+"${CLEARML_ARGS[@]}"}

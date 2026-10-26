@@ -1,1 +1,40 @@
-external
+# Local datasets, downloaded baselines and experiment artifacts
+/dataset/
+/external/
+/trained_models/
+/synth_data/
+/reports/
+/slurm/logs/
+/output/
+/outputs/
+/tmp/
+*.pt
+*.pth
+*.ckpt
+*.pkl
+
+# Python environments, caches and packaging
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.coverage
+htmlcov/
+
+# Local credentials and OS/editor files
+.env
+.env.*
+!.env.example
+clearml.conf
+*.pem
+*.key
+.DS_Store
+.idea/
+.vscode/

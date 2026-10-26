@@ -1,0 +1,18 @@
+{
+  "hdd_sequential": {
+    "train_csv": "reports/outlier_cleaning/hdd_sequential/train_clean.csv",
+    "test_csv": "dataset/pools/test_hdd_sequential.csv"
+  },
+  "ssd_sequential": {
+    "train_csv": "reports/outlier_cleaning/ssd_sequential/train_clean.csv",
+    "test_csv": "dataset/pools/test_ssd_sequential.csv"
+  },
+  "ssd_random": {
+    "train_csv": "reports/outlier_cleaning/ssd_random/train_clean.csv",
+    "test_csv": "dataset/pools/test_ssd_random.csv"
+  },
+  "cache": {
+    "train_csv": "reports/outlier_cleaning/cache/train_clean.csv",
+    "test_csv": "dataset/cache/test_cache.csv"
+  }
+}

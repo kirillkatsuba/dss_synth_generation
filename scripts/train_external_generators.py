@@ -20,6 +20,11 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from scripts.training_data import add_dataset_arguments, resolve_dataset_arguments
+
 REPOS = {
     "tabddpm": {
         "url": "https://github.com/yandex-research/tab-ddpm.git",
@@ -60,6 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Prepare DSS data and run TabDDPM, TabDiff, and TabSyn training/sampling."
     )
+    add_dataset_arguments(parser)
     parser.add_argument(
         "--models",
         nargs="+",
@@ -92,7 +98,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--dataset-prefix",
-        default="dss_hdd_sequential",
+        default=None,
         help="Base dataset name used inside upstream repos.",
     )
     parser.add_argument(
@@ -138,6 +144,19 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=4096,
         help="TabDDPM train batch size.",
+    )
+    parser.add_argument(
+        "--tabddpm-d-layers",
+        nargs="+",
+        type=int,
+        default=[256, 256],
+        help="Hidden layer sizes for the TabDDPM MLP denoiser.",
+    )
+    parser.add_argument(
+        "--tabddpm-dropout",
+        type=float,
+        default=0.0,
+        help="Dropout for the TabDDPM MLP denoiser.",
     )
     parser.add_argument(
         "--tabddpm-lr",
@@ -198,7 +217,10 @@ def parse_args() -> argparse.Namespace:
         default=[],
         help="Optional ClearML tags.",
     )
-    return parser.parse_args()
+    args = resolve_dataset_arguments(parser.parse_args(), parser, "real_train", "real_test")
+    if args.dataset_prefix is None:
+        args.dataset_prefix = f"dss_{args.dataset}_clean" if args.dataset_config else "dss_hdd_sequential"
+    return args
 
 
 def expand_models(models: list[str]) -> list[str]:
@@ -465,6 +487,7 @@ def prepare_tabddpm_repo(
 
     config_path = exp_dir / "config.toml"
     sample_count = len(train_df)
+    d_layers = ", ".join(str(layer) for layer in args.tabddpm_d_layers)
     config = f'''seed = 0
 parent_dir = "exp/{spec.dataset_name}/dss_ddpm"
 real_data_path = "data/{spec.dataset_name}/"
@@ -478,8 +501,8 @@ is_y_cond = false
 num_classes = 0
 
 [model_params.rtdl_params]
-d_layers = [256, 256]
-dropout = 0.0
+d_layers = [{d_layers}]
+dropout = {args.tabddpm_dropout}
 
 [diffusion_params]
 num_timesteps = {args.tabddpm_timesteps}
@@ -758,7 +781,18 @@ def sample_models(
             ]
             if args.tabdiff_num_samples is not None:
                 cmd += ["--num_samples_to_generate", str(args.tabdiff_num_samples)]
-            run_command(cmd, cwd=REPOS["tabdiff"]["path"], dry_run=args.dry_run)
+            try:
+                run_command(cmd, cwd=REPOS["tabdiff"]["path"], dry_run=args.dry_run)
+            except subprocess.CalledProcessError as exc:
+                if args.dry_run:
+                    raise
+                print(
+                    "WARNING: TabDiff test command failed after sampling. "
+                    "Trying to recover the latest samples.csv because TabDiff "
+                    "can fail during its built-in evaluation.",
+                    file=sys.stderr,
+                    flush=True,
+                )
             if not args.dry_run:
                 copy_latest_tabdiff_sample(
                     REPOS["tabdiff"]["path"],

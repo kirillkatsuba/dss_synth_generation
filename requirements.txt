@@ -1,0 +1,11 @@
+# Core stack used in the local verification environment.
+# Select the appropriate PyTorch CUDA build separately for GPU deployments.
+torch==2.6.0
+numpy==2.2.1
+pandas==2.2.3
+scipy==1.14.1
+scikit-learn==1.6.0
+matplotlib==3.10.0
+seaborn==0.13.2
+sdmetrics==0.28.0
+threadpoolctl==3.5.0
